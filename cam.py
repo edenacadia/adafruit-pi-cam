@@ -146,12 +146,22 @@ def fxCallback(n): # Pass 1 (next effect) or -1 (prev effect)
 	global fxMode
 	setFxMode((fxMode + n) % len(fxData))
 
+def repeatCallback(n):
+	global repeatNum
+	print "Setting repeat to " + str(n) + ": " + str(repeats[n])
+	setRepeatNum((repeatNum + n) % len(repeats))
+
+def delayCallback(n):
+	global delayNum
+	print "Setting delay to " + str(n) + ": " + str(delays[delayNum])
+	setDelayNum((delayNum + n) % len(delays))
+
 def quitCallback(): # Quit confirmation button
 	saveSettings()
 	raise SystemExit
 
 def viewCallback(n): # Viewfinder buttons
-	global loadIdx, scaled, screenMode, screenModePrior, settingMode, storeMode
+	global loadIdx, scaled, screenMode, screenModePrior, settingMode, cameraMode
 
 	if n is 0:   # Gear icon (settings)
 	  screenMode = settingMode # Switch to last settings mode
@@ -161,7 +171,7 @@ def viewCallback(n): # Viewfinder buttons
 	    screenMode      =  0 # Image playback
 	    screenModePrior = -1 # Force screen refresh
 	  else:      # Load image
-	    r = imgRange(pathData[storeMode])
+	    r = imgRange(pathData[0])
 	    if r: showImage(r[1]) # Show last image in directory
 	    else: screenMode = 2  # No images
 	else: # Rest of screen = shutter
@@ -182,12 +192,12 @@ def imageCallback(n): # Pass 1 (next image), -1 (prev image) or 0 (delete)
 	  showNextImage(n)
 
 def deleteCallback(n): # Delete confirmation
-	global loadIdx, scaled, screenMode, storeMode
+	global loadIdx, scaled, screenMode, cameraMode
 	screenMode      =  0
 	screenModePrior = -1
 	if n is True:
-	  os.remove(pathData[storeMode] + '/IMG_' + '%04d' % loadIdx + '.JPG')
-	  if(imgRange(pathData[storeMode])):
+	  os.remove(pathData[0] + '/IMG_' + '%04d' % loadIdx + '.JPG')
+	  if(imgRange(pathData[0])):
 	    screen.fill(0)
 	    pygame.display.update()
 	    showNextImage(-1)
@@ -201,6 +211,12 @@ def storeModeCallback(n): # Radio buttons on storage settings screen
 	buttons[4][storeMode + 3].setBg('radio3-0')
 	storeMode = n
 	buttons[4][storeMode + 3].setBg('radio3-1')
+
+def cameraModeCallback(n): # Radio buttons on storage settings screen
+	global cameraMode
+	buttons[4][cameraMode + 3].setBg('radio3-0')
+	cameraMode = n
+	buttons[4][cameraMode + 3].setBg('radio3-1')
 
 def sizeModeCallback(n): # Radio buttons on size settings screen
 	global sizeMode
@@ -218,6 +234,12 @@ screenModePrior = -1      # Prior screen mode (for detecting changes)
 settingMode     =  4      # Last-used settings mode (default = storage)
 storeMode       =  0      # Storage mode; default = Photos folder
 storeModePrior  = -1      # Prior storage mode (for detecting changes)
+
+cameraMode      =  0      # Shooting Mode (0 = single, 1 = video)
+cameraModePrior = -1      # to detect changes
+repeatNum       =  0      # number of images to take
+delayNum        =  0      # seconds to delay
+
 sizeMode        =  0      # Image size; default = Large
 fxMode          =  0      # Image effect; default = Normal
 isoMode         =  0      # ISO settingl default = Auto
@@ -243,6 +265,7 @@ sizeData = [ # Camera parameters for different size settings
 isoData = [ # Values for ISO settings [ISO value, indicator X position]
  [  0,  27], [100,  64], [200,  97], [320, 137],
  [400, 164], [500, 197], [640, 244], [800, 297]]
+ 
 
 # A fixed list of image effects is used (rather than polling
 # camera.IMAGE_EFFECTS) because the latter contains a few elements
@@ -259,7 +282,12 @@ fxData = [
 pathData = [
   '/home/pi/Photos',     # Path for storeMode = 0 (Photos folder)
   '/boot/DCIM/CANON999', # Path for storeMode = 1 (Boot partition)
-  '/home/pi/Photos']     # Path for storeMode = 2 (Dropbox)
+  '/home/pi/Photos',     # Path for storeMode = 2 (Dropbox)
+  '/home/pi/tmp']    
+  
+repeats = [5,10,20,50];
+
+delays = [5,10,30];
 
 icons = [] # This list gets populated at startup
 
@@ -301,17 +329,15 @@ buttons = [
 
   # Remaining screens are settings modes
 
-  # Screen mode 4 is storage settings
+  # Screen mode 4 - Camera Mode   (was storage settings)
   [Button((  0,188,320, 52), bg='done', cb=doneCallback),
    Button((  0,  0, 80, 52), bg='prev', cb=settingCallback, value=-1),
    Button((240,  0, 80, 52), bg='next', cb=settingCallback, value= 1),
-   Button((  2, 60,100,120), bg='radio3-1', fg='store-folder',
-    cb=storeModeCallback, value=0),
-   Button((110, 60,100,120), bg='radio3-0', fg='store-boot',
-    cb=storeModeCallback, value=1),
-   Button((218, 60,100,120), bg='radio3-0', fg='store-dropbox',
-    cb=storeModeCallback, value=2),
-   Button((  0, 10,320, 35), bg='storage')],
+   Button((  2, 60,100,120), bg='radio3-1', fg='mode-single',
+    cb=cameraModeCallback, value=0),
+   Button((110, 60,100,120), bg='radio3-0', fg='mode-video',
+    cb=cameraModeCallback, value=1),
+   Button((  0, 10,320, 35), bg='mode')],
 
   # Screen mode 5 is size settings
   [Button((  0,188,320, 52), bg='done', cb=doneCallback),
@@ -325,25 +351,23 @@ buttons = [
     cb=sizeModeCallback, value=2),
    Button((  0, 10,320, 29), bg='size')],
 
-  # Screen mode 6 is graphic effect
+  # Screen mode 6 - # of Images (was graphic effect)
   [Button((  0,188,320, 52), bg='done', cb=doneCallback),
    Button((  0,  0, 80, 52), bg='prev', cb=settingCallback, value=-1),
    Button((240,  0, 80, 52), bg='next', cb=settingCallback, value= 1),
-   Button((  0, 70, 80, 52), bg='prev', cb=fxCallback     , value=-1),
-   Button((240, 70, 80, 52), bg='next', cb=fxCallback     , value= 1),
-   Button((  0, 67,320, 91), bg='fx-none'),
-   Button((  0, 11,320, 29), bg='fx')],
+   Button((  0, 70, 80, 52), bg='prev', cb=repeatCallback     , value=-1),
+   Button((240, 70, 80, 52), bg='next', cb=repeatCallback     , value= 1),
+   Button((  0, 67,320, 91), bg='repeat-none'),
+   Button((  0, 11,320, 29), bg='repeat')],
 
-  # Screen mode 7 is ISO
+  # Screen mode 7 - Delay  (was ISO)
   [Button((  0,188,320, 52), bg='done', cb=doneCallback),
    Button((  0,  0, 80, 52), bg='prev', cb=settingCallback, value=-1),
    Button((240,  0, 80, 52), bg='next', cb=settingCallback, value= 1),
-   Button((  0, 70, 80, 52), bg='prev', cb=isoCallback    , value=-1),
-   Button((240, 70, 80, 52), bg='next', cb=isoCallback    , value= 1),
-   Button((  0, 79,320, 33), bg='iso-0'),
-   Button((  9,134,302, 26), bg='iso-bar'),
-   Button(( 17,157, 21, 19), bg='iso-arrow'),
-   Button((  0, 10,320, 29), bg='iso')],
+   Button((  0, 70, 80, 52), bg='prev', cb=delayCallback    , value=-1),
+   Button((240, 70, 80, 52), bg='next', cb=delayCallback    , value= 1),
+   Button((  0, 67,320, 91), bg='delay-none'),
+   Button((  0, 11,320, 29), bg='delay')],
 
   # Screen mode 8 is quit confirmation
   [Button((  0,188,320, 52), bg='done'   , cb=doneCallback),
@@ -362,6 +386,16 @@ def setFxMode(n):
 	camera.image_effect = fxData[fxMode]
 	buttons[6][5].setBg('fx-' + fxData[fxMode])
 
+def setRepeatNum(n):
+	global repeatNum
+	repeatNum = n
+	buttons[6][5].setBg('repeat-' + str(repeats[repeatNum]))
+
+def setDelayNum(n):
+	global delayNum
+	delayNum = n
+	buttons[7][5].setBg('delay-' + str(delays[delayNum]))
+
 def setIsoMode(n):
 	global isoMode
 	isoMode    = n
@@ -375,10 +409,10 @@ def saveSettings():
 	  outfile = open('cam.pkl', 'wb')
 	  # Use a dictionary (rather than pickling 'raw' values) so
 	  # the number & order of things can change without breaking.
-	  d = { 'fx'    : fxMode,
-	        'iso'   : isoMode,
+	  d = { 'repeat'    : repeatNum,
+	        'delay'   : delayNum,
 	        'size'  : sizeMode,
-	        'store' : storeMode }
+	        'mode' : cameraMode }
 	  pickle.dump(d, outfile)
 	  outfile.close()
 	except:
@@ -389,10 +423,10 @@ def loadSettings():
 	  infile = open('cam.pkl', 'rb')
 	  d      = pickle.load(infile)
 	  infile.close()
-	  if 'fx'    in d: setFxMode(   d['fx'])
-	  if 'iso'   in d: setIsoMode(  d['iso'])
+	  if 'repeat'    in d: setRepeatNum(   d['repeat'])
+	  if 'delay'   in d: setDelayNum(  d['delay'])
 	  if 'size'  in d: sizeModeCallback( d['size'])
-	  if 'store' in d: storeModeCallback(d['store'])
+	  if 'mode' in d: cameraModeCallback(d['mode'])
 	except:
 	  pass
 
@@ -434,14 +468,22 @@ def spinner():
 	screenModePrior = -1 # Force refresh
 
 def takePicture():
-	global busy, gid, loadIdx, saveIdx, scaled, sizeMode, storeMode, storeModePrior, uid
+	global busy, gid, loadIdx, saveIdx, scaled, sizeMode, cameraMode, cameraModePrior, uid, repeatNum
 
-	if not os.path.isdir(pathData[storeMode]):
+	if(cameraMode==1):
+		takeMovie()
+		return
+	else:
+		path = pathData[0]
+		numImages = 1
+
+
+	if not os.path.isdir(path):
 	  try:
-	    os.makedirs(pathData[storeMode])
+	    os.makedirs(path)
 	    # Set new directory ownership to pi user, mode to 755
-	    os.chown(pathData[storeMode], uid, gid)
-	    os.chmod(pathData[storeMode],
+	    os.chown(path, uid, gid)
+	    os.chmod(path,
 	      stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR |
 	      stat.S_IRGRP | stat.S_IXGRP |
 	      stat.S_IROTH | stat.S_IXOTH)
@@ -452,18 +494,18 @@ def takePicture():
 
 	# If this is the first time accessing this directory,
 	# scan for the max image index, start at next pos.
-	if storeMode != storeModePrior:
-	  r = imgRange(pathData[storeMode])
+	if cameraMode != cameraModePrior:
+	  r = imgRange(path)
 	  if r is None:
 	    saveIdx = 1
 	  else:
 	    saveIdx = r[1] + 1
 	    if saveIdx > 9999: saveIdx = 0
-	  storeModePrior = storeMode
+	  cameraModePrior = cameraMode
 
 	# Scan for next available image slot
 	while True:
-	  filename = pathData[storeMode] + '/IMG_' + '%04d' % saveIdx + '.JPG'
+	  filename = path + '/IMG_' + '%04d' % saveIdx + '.JPG'
 	  if not os.path.isfile(filename): break
 	  saveIdx += 1
 	  if saveIdx > 9999: saveIdx = 0
@@ -475,20 +517,13 @@ def takePicture():
 	camera.resolution = sizeData[sizeMode][0]
 	camera.crop       = sizeData[sizeMode][2]
 	try:
-	  camera.capture(filename, use_video_port=False, format='jpeg',
-	    thumbnail=None)
+	  camera.capture(filename, use_video_port=False, format='jpeg', thumbnail=None)
 	  # Set image file ownership to pi user, mode to 644
 	  # os.chown(filename, uid, gid) # Not working, why?
 	  os.chmod(filename,
 	    stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
 	  img    = pygame.image.load(filename)
 	  scaled = pygame.transform.scale(img, sizeData[sizeMode][1])
-	  if storeMode == 2: # Dropbox
-	    if upconfig:
-	      cmd = uploader + ' -f ' + upconfig + ' upload ' + filename + ' Photos/' + os.path.basename(filename)
-	    else:
-	      cmd = uploader + ' upload ' + filename + ' Photos/' + os.path.basename(filename)
-	    call ([cmd], shell=True)
 
 	finally:
 	  # Add error handling/indicator (disk full, etc.)
@@ -508,6 +543,101 @@ def takePicture():
 	  time.sleep(2.5)
 	  loadIdx = saveIdx
 
+def takeMovie():
+	global busy, gid, loadIdx, saveIdx, scaled, sizeMode, cameraMode, cameraModePrior, uid, repeatNum, delayNum
+
+	path = pathData[3] + "/burst"
+	numImages = repeats[repeatNum]
+
+	# Make the folder for the burst of images to be stored
+	if not os.path.isdir(path):
+	  try:
+	    os.makedirs(path)
+	    # Set new directory ownership to pi user, mode to 755
+	    os.chown(path, uid, gid)
+	    os.chmod(path,
+	      stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR |
+	      stat.S_IRGRP | stat.S_IXGRP |
+	      stat.S_IROTH | stat.S_IXOTH)
+	  except OSError as e:
+	    # errno = 2 if can't create folder
+	    print errno.errorcode[e.errno]
+	    return
+	else:
+		
+		#loop through and make sure the burst directory is empty
+		for file in os.listdir(path):
+		    if fnmatch.fnmatch(file, '*.JPG') == True:
+				os.remove(path+'/'+file)
+
+
+	# start with image 1
+	imgIdx = 1
+
+	# command to convert to movie
+	command = "avconv -f image2 -t 10000 "
+
+	# start the spinner running
+	t = threading.Thread(target=spinner)
+	t.start()
+
+	scaled = None
+	camera.resolution = sizeData[sizeMode][0]
+	camera.crop       = sizeData[sizeMode][2]
+	try:
+	  for x in xrange(numImages):
+		  filename = path + '/IMG_' + '%04d' % imgIdx + '.JPG'
+		  imgIdx += 1
+		  
+		  print "taking picture " + str(x) + " of " + str(numImages) + " (" + filename + ")"
+		  camera.capture(filename, use_video_port=False, format='jpeg', thumbnail=None)
+		  # Set image file ownership to pi user, mode to 644
+		  # os.chown(filename, uid, gid) # Not working, why?
+		  os.chmod(filename,
+		    stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IROTH)
+		  img    = pygame.image.load(filename)
+		  scaled = pygame.transform.scale(img, sizeData[sizeMode][1])
+		  print " sleeping " + str(delays[delayNum])
+		  time.sleep(delays[delayNum])
+
+	finally:
+	  # Add error handling/indicator (disk full, etc.)
+	  camera.resolution = sizeData[sizeMode][1]
+	  camera.crop       = (0.0, 0.0, 1.0, 1.0)
+
+
+	if cameraMode != cameraModePrior:
+	  r = imgRange(pathData[0])
+	  if r is None:
+	    saveIdx = 1
+	  else:
+	    saveIdx = r[1] + 1
+	    if saveIdx > 9999: saveIdx = 0
+	  cameraModePrior = cameraMode
+
+	# Convert to video
+	print "Converting to video"
+	while True:
+	  filename = pathData[0] + '/MOV_' + '%04d' % saveIdx + '.MP4'
+	  if not os.path.isfile(filename): break
+	  saveIdx += 1
+	  if saveIdx > 9999: saveIdx = 0
+	command = 'avconv -f image2 -r 5 -i ' + path + '/IMG_%04d.JPG -s 800x600 ' + filename
+	print "  " + command
+	os.system(command)
+
+	busy = False
+	t.join()
+
+	if scaled:
+	  if scaled.get_height() < 240: # Letterbox
+	    screen.fill(0)
+	  screen.blit(scaled,
+	    ((320 - scaled.get_width() ) / 2,
+	     (240 - scaled.get_height()) / 2))
+	  pygame.display.update()
+	  time.sleep(2.5)
+
 def showNextImage(direction):
 	global busy, loadIdx
 
@@ -519,7 +649,7 @@ def showNextImage(direction):
 	  n += direction
 	  if(n > 9999): n = 0
 	  elif(n < 0):  n = 9999
-	  if os.path.exists(pathData[storeMode]+'/IMG_'+'%04d'%n+'.JPG'):
+	  if os.path.exists(pathData[0]+'/IMG_'+'%04d'%n+'.JPG'):
 	    showImage(n)
 	    break
 
@@ -527,13 +657,13 @@ def showNextImage(direction):
 	t.join()
 
 def showImage(n):
-	global busy, loadIdx, scaled, screenMode, screenModePrior, sizeMode, storeMode
+	global busy, loadIdx, scaled, screenMode, screenModePrior, sizeMode, cameraMode
 
 	t = threading.Thread(target=spinner)
 	t.start()
 
 	img      = pygame.image.load(
-	            pathData[storeMode] + '/IMG_' + '%04d' % n + '.JPG')
+	            pathData[0] + '/IMG_' + '%04d' % n + '.JPG')
 	scaled   = pygame.transform.scale(img, sizeData[sizeMode][1])
 	loadIdx  = n
 
